@@ -31,3 +31,18 @@ void negacyclic_shift_poly_coeffmod(ConstCoeffIter poly, size_t coeff_count, siz
       }
   }
 }
+
+void shift_polynomial(EncryptionParameters & params, Ciphertext & encrypted, Ciphertext & destination, size_t index){
+  auto encrypted_count = encrypted.size();
+  auto coeff_count = params.poly_modulus_degree();
+  auto coeff_mod_count = params.coeff_modulus().size() - 1;
+  destination = encrypted;
+  for (int i = 0; i < encrypted_count; i++) {
+    for (int j = 0; j < coeff_mod_count; j++) {
+      negacyclic_shift_poly_coeffmod(encrypted.data(i) + (j * coeff_count),
+                                     coeff_count, index,
+                                     params.coeff_modulus()[j],
+                                     destination.data(i) + (j * coeff_count));
+    }
+  }
+}

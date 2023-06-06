@@ -55,6 +55,15 @@
     "stop_token": "cpp",
     "streambuf": "cpp",
     "thread": "cpp",
-    "typeinfo": "cpp"
-  }
+    "typeinfo": "cpp",
+    "chrono": "cpp",
+    "optional": "cpp",
+    "fstream": "cpp"
+  },
+  "vim.insertModeKeyBindings": [
+    {
+      "before": ["j", "k"],
+      "after": ["<Esc>"]
+    }
+  ]
 }

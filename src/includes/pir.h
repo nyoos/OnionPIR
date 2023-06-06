@@ -4,9 +4,10 @@
 #include <vector>
 #include <stdexcept>
 
-typedef std::vector<seal::Ciphertext> PirQuery;
 using namespace seal::util;
 using namespace seal;
+
+typedef std::vector<Ciphertext> PirQuery;
 
 struct PirParams {
     uint64_t DBSize;                    // number of elements in the database
@@ -25,12 +26,12 @@ struct PirParams {
             if (first_dim < 128) {
                 throw std::invalid_argument("Size of first dimension is too small");
             }
-            if (!(first_dim & (first_dim - 1))) {
-                throw std::invalid_argument("Size of first dimension is not a power of 2");
+            if ((first_dim & (first_dim - 1))) {
+                throw std::invalid_argument("Size of database is not a power of 2");
             }
             dims.push_back(first_dim);
             for (uint i = 1; i < ndim; i++) {
-            dims.push_back(2);
+                dims.push_back(2);
             }
         } 
     seal::EncryptionParameters gen_params() const;
@@ -38,3 +39,4 @@ struct PirParams {
 
 
 void negacyclic_shift_poly_coeffmod(ConstCoeffIter poly, size_t coeff_count, size_t shift, const Modulus &modulus, CoeffIter result);
+void shift_polynomial(EncryptionParameters & params, Ciphertext & encrypted, Ciphertext & destination, size_t index);
