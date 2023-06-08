@@ -3,55 +3,34 @@
 #include <iostream>
 
 int main() {
-  // PirParams pir_params(1024, 3, 256);
-  // PirServer server(pir_params);
-  // server.gen_data();
-  // auto plain = server.get_database()[0];
-  // for (int i = 0; i < pir_params.n; i++){
-  //   std::cout<< plain[i] << ", ";
-  // }
-  // std::cout << std::endl;
-  // return 0;
-  PirParams pir_params(1024, 3, 257);
+  PirParams pir_params(1024, 3, 3000, 3);
+  const int client_id = 0;
+  pir_params.print_values();
+  std::cout << pir_params.get_num_bytes_per_coeff() << std::endl;
   PirServer server(pir_params);
-  std::vector<Entry> new_db;
-  for (int i = 0; i < 256; i++) {
-    for (int j = 0; j < 4; j++) {
-      Entry en;
-      en.push_back(i+j);
-      en.push_back(1);
-      new_db.push_back(en);
-    }
+  // server.gen_data();
+  std::vector<Entry> data(3000);
+  for (auto & entry : data) {
+    entry.push_back(255);
+    entry.push_back(173);
+    entry.push_back(64);
   }
-  server.set_database(new_db);
+  server.set_database(data);
   std::cout << "DB set" << std::endl;
+
   PirClient client(pir_params);
   std::cout << "Client initialized" << std::endl;
-  server.register_client(&client);
+  server.set_client_keys(client_id, client.create_galois_keys());
+  server.set_client_decryptor(client_id, client.get_decryptor());
   std::cout << "Client registered" << std::endl;
-  auto result = server.make_query(client.client_id,client.generate_query(2));
+  auto result = server.make_query(client_id ,client.generate_query(2));
 
   std::cout << "Result: " << std::endl;
   auto decrypted_result = client.decrypt_result(result);
   for (auto & res : decrypted_result) {
-    std::cout << res.to_string() << ", " ;
+    std::cout << res.to_string() << std::endl;
   }
-  std::cout << std::endl;
-  result = server.make_query(client.client_id,client.generate_query(3));
-
-  std::cout << "Result: " << std::endl;
-  decrypted_result = client.decrypt_result(result);
-  for (auto & res : decrypted_result) {
-    std::cout << res.to_string() << ", " ;
-  }
-  std::cout << std::endl;
-  result = server.make_query(client.client_id,client.generate_query(4));
-
-  std::cout << "Result: " << std::endl;
-  decrypted_result = client.decrypt_result(result);
-  for (auto & res : decrypted_result) {
-    std::cout << res.to_string() << ", " ;
-  }
+  print_entry(client.get_entry_from_plaintext(2, decrypted_result[0]));
   std::cout << std::endl;
   return 0;
 }

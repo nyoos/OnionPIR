@@ -1,9 +1,11 @@
 #include "client.h"
+#include <bitset>
 
 PirClient::PirClient(const PirParams &pir_params):
-  params_(pir_params.gen_params()),
-  DBSize_(pir_params.DBSize),
-  dims_(pir_params.dims)
+  params_(pir_params.get_seal_params()),
+  DBSize_(pir_params.get_DBSize()),
+  dims_(pir_params.get_dims()),
+  pir_params_(pir_params)
    {
     context_ = new seal::SEALContext(params_);
     evaluator_ = new seal::Evaluator(*context_);
@@ -26,7 +28,10 @@ seal::Decryptor* PirClient::get_decryptor() {
   return decryptor_;
 }
 
-PirQuery PirClient::generate_query(std::uint64_t index) {
+PirQuery PirClient::generate_query(std::uint64_t entry_index) {
+
+  // Get the corresponding index of the plaintext in the database
+  uint64_t database_index = get_database_index(entry_index);
   uint64_t poly_degree = params_.poly_modulus_degree();
   
   // The number of bits is equal to the size of the first dimension
@@ -40,7 +45,7 @@ PirQuery PirClient::generate_query(std::uint64_t index) {
   uint64_t inverse = 0;
   seal::util::try_invert_uint_mod(bits_per_ciphertext, params_.plain_modulus(), inverse);
  
-  plain_query[0][index / size_of_other_dims] = inverse;
+  plain_query[0][database_index / size_of_other_dims] = inverse;
   
   PirQuery query;
   for (int i = 0; i < plain_query.size(); i++) {
@@ -70,11 +75,46 @@ seal::GaloisKeys PirClient::create_galois_keys() {
 }
 
 
-  std::vector<seal::Plaintext> PirClient::decrypt_result(std::vector<seal::Ciphertext> reply) {
-    std::vector<seal::Plaintext> result(reply.size(), seal::Plaintext(params_.poly_modulus_degree()));
-    for(size_t i = 0; i < reply.size(); i++){
-      decryptor_->decrypt(reply[i], result[i]);
-    }
-
-    return result;
+std::vector<seal::Plaintext> PirClient::decrypt_result(std::vector<seal::Ciphertext> reply) {
+  std::vector<seal::Plaintext> result(reply.size(), seal::Plaintext(params_.poly_modulus_degree()));
+  for(size_t i = 0; i < reply.size(); i++){
+    decryptor_->decrypt(reply[i], result[i]);
   }
+
+  return result;
+}
+
+// Calculates the index of the database plaintext that contains the desired entry
+size_t PirClient::get_database_index(size_t entry_index) {
+  return entry_index / pir_params_.num_entries_per_plaintext();
+}
+
+// Retrieves the desired bytes from the plaintext and converts it into an Entry
+Entry PirClient::get_entry_from_plaintext(size_t entry_index, seal::Plaintext plaintext) {
+  // Offset in the plaintext by bytes
+  size_t start_position_in_plaintext = (entry_index % pir_params_.num_entries_per_plaintext()) * pir_params_.get_entry_size();
+  
+  // Offset in the plaintext by coefficient
+  size_t num_bytes_per_coeff = pir_params_.get_num_bytes_per_coeff();
+  size_t coeff_index = start_position_in_plaintext / pir_params_.get_num_bytes_per_coeff();
+
+  // Offset in the coefficient by byte
+  size_t coeff_offset = start_position_in_plaintext % num_bytes_per_coeff;
+  std::cout << coeff_offset << std::endl;
+
+  size_t entry_size = pir_params_.get_entry_size();
+  Entry result(entry_size);
+  for (int i = 0; i < entry_size;) {
+    while (coeff_offset < num_bytes_per_coeff) {
+      uint64_t bitmask = 255 << coeff_offset*8;
+      uint64_t kk = bitmask & plaintext[coeff_index];
+      uint8_t value = (bitmask & plaintext[coeff_index]) >> (coeff_offset*8);
+      result[i] = value;
+      ++i;
+      ++coeff_offset;
+    }
+    coeff_offset = 0;
+    ++coeff_index;
+  }
+  return result;
+}

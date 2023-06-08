@@ -1,46 +1,31 @@
 #include "server.h"
 #include <cstdlib>
 #include <stdexcept>
+#include <cassert>
+#include <memory>
+#include <bitset>
 
 
 PirServer::PirServer(const PirParams &pir_params):
-  params_(pir_params.gen_params()),
-  context_(params_),
-  DBSize_(pir_params.DBSize),
+  pir_params_(pir_params),
+  context_(pir_params.get_seal_params()),
+  DBSize_(pir_params.get_DBSize()),
   evaluator_(context_),
-  dims_(pir_params.dims) {}
+  dims_(pir_params.get_dims()) {}
 
+// Fills the database with random data
 void PirServer::gen_data() {
-  Database new_db;
-  for (int i = 0; i < DBSize_; i++) {
-    seal::Plaintext plain(params_.poly_modulus_degree());
-    for(int j = 0; j < params_.poly_modulus_degree(); j++) {
-      plain[j] = rand() % 255;
+  std::vector<Entry> data;
+  data.reserve(pir_params_.get_num_entries());
+  for (size_t i = 0; i < pir_params_.get_num_entries(); ++i){
+    data.push_back(Entry(pir_params_.get_entry_size()));
+    for (size_t j = 0; j < pir_params_.get_entry_size(); ++j) {
+      data[i][j] = (rand() % 255);
     }
-    evaluator_.transform_to_ntt_inplace(plain, context_.first_parms_id());
-    new_db.push_back(plain);
   }
-  db_ = new_db;
+  set_database(data);
 }
 
-Database PirServer::get_database(){
-  return db_;
-}
-
-void PirServer::set_database(std::vector<Entry> new_db){
-  if (new_db.size() != DBSize_) {
-    throw std::invalid_argument("Database size does not match");
-  }
-  db_ = Database();
-  for (Entry & entry : new_db) {
-    seal::Plaintext plain(params_.poly_modulus_degree());
-    for (int i = 0; i < params_.poly_modulus_degree() && i < entry.size(); i++) {
-      plain[i] = entry[i] % params_.plain_modulus().value();
-    }
-    evaluator_.transform_to_ntt_inplace(plain, context_.first_parms_id());
-    db_.push_back(plain);
-  }
-}
 
 std::vector<seal::Ciphertext> PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> & selection_vector) {
   int size_of_other_dims = DBSize_ / dims_[0];
@@ -68,8 +53,9 @@ std::vector<seal::Ciphertext> PirServer::evaluate_first_dim(std::vector<seal::Ci
 
 
 std::vector<seal::Ciphertext> PirServer::expand_first_query_dim(uint32_t client_id, seal::Ciphertext ciphertext) {
+  seal::EncryptionParameters params = pir_params_.get_seal_params();
   std::vector<Ciphertext> expanded_query;
-  int poly_degree = params_.poly_modulus_degree();
+  int poly_degree = params.poly_modulus_degree();
 
   // Expand ciphertext into 2^expansion_factor individual ciphertexts (number of bits) = size of first dimension
   int expansion_factor = std::log2(dims_[0]);
@@ -87,8 +73,8 @@ std::vector<seal::Ciphertext> PirServer::expand_first_query_dim(uint32_t client_
                                       poly_degree/expansion_const + 1,
                                       client_keys_[client_id]);
       Ciphertext cipher1;
-      shift_polynomial(params_, cipher0, cipher1, -expansion_const);
-      shift_polynomial(params_, cipher_vec[b], cipher_vec[b + expansion_const], -expansion_const);
+      shift_polynomial(params, cipher0, cipher1, -expansion_const);
+      shift_polynomial(params, cipher_vec[b], cipher_vec[b + expansion_const], -expansion_const);
       evaluator_.add_inplace(cipher_vec[b], cipher0);
       evaluator_.sub_inplace(cipher_vec[b + expansion_const], cipher1);
     }
@@ -100,12 +86,10 @@ void PirServer::set_client_keys(uint32_t client_id, seal::GaloisKeys client_key)
   client_keys_[client_id] = client_key;
 }
 
-void PirServer::register_client(PirClient* client) {
-  set_client_keys(next_client_id, client->create_galois_keys());
-  client_decryptors_[next_client_id] = client->get_decryptor();
-  client->client_id = next_client_id++;
-}
 
+  void PirServer::set_client_decryptor(uint32_t client_id, seal::Decryptor* client_decryptor) {
+    client_decryptors_[client_id] = client_decryptor;
+  }
 
 std::vector<seal::Ciphertext> PirServer::make_query(uint32_t client_id, PirQuery query) {
   std::vector<seal::Ciphertext> first_dim_selection_vector = expand_first_query_dim(client_id, query[0]);
@@ -120,4 +104,66 @@ std::vector<seal::Ciphertext> PirServer::make_query(uint32_t client_id, PirQuery
 
 
   return result;
+}
+
+// Sets database by turning data into a stream of bits then encoding the bits into the plaintext. Any left over space in the DB is padded by 1s.
+void PirServer::set_database(std::vector<Entry> new_db) {
+  db_ = Database();
+
+  // Flattens data into vector of u8s and pads each entry with 0s to entry_size number of bytes.
+  size_t total_size = 0;
+  for (Entry & entry : new_db){
+    if (entry.size() <= pir_params_.get_entry_size()) {
+      entry.resize(pir_params_.get_entry_size(), 0);
+    } else {
+      throw std::invalid_argument("Entry size is too large");
+    }
+  }
+  std::vector<uint8_t> data;
+  data.reserve(total_size);
+  for (const Entry & entry : new_db) {
+    data.insert(data.end(), entry.begin(), entry.end());
+  }
+
+  set_database_from_bytes(data);
+}
+
+
+// Encodes the stream of bytes into plaintext coefficients by simply packing as many bytes into each coefficient as possible. However each plaintext always ends aligned to the end of an entry (no entries are split across multiple plaintexts).
+void PirServer::set_database_from_bytes(const std::vector<uint8_t> & data) {
+  // Get necessary parameters
+  size_t bytes_per_coeff = pir_params_.get_num_bytes_per_coeff();
+  size_t num_bytes_per_plaintext = pir_params_.get_num_bytes_per_plaintext();
+  std::cout << num_bytes_per_plaintext << std::endl;
+
+  db_ = Database();
+
+  auto data_iterator = data.begin();
+  while (data_iterator != data.end()) {
+    seal::Plaintext plaintext(pir_params_.get_seal_params().poly_modulus_degree());
+    for (int i = 0; i < num_bytes_per_plaintext && data_iterator != data.end(); i += bytes_per_coeff){ 
+      std::string bit_str;
+      for (int j = 0 ; j < bytes_per_coeff && data_iterator != data.end(); ++j){
+        bit_str = std::bitset<8>(*(data_iterator++)).to_string() + bit_str;
+      }
+      plaintext[i / bytes_per_coeff] = std::bitset<64>(bit_str).to_ullong();
+    }
+    db_.push_back(plaintext);
+  }
+
+  // Pad database until DBSize_
+  for (size_t i = db_.size(); i < DBSize_; i++){
+    db_.push_back(seal::Plaintext(pir_params_.get_seal_params().poly_modulus_degree()));
+    // Pad each plaintext with a 1
+    db_[i][0] = 1;
+  }
+
+  // Process database
+  preprocess_ntt();
+}
+
+void PirServer::preprocess_ntt(){
+  for (auto & plaintext : db_){
+    evaluator_.transform_to_ntt_inplace(plaintext, context_.first_parms_id());
+  }
 }

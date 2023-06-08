@@ -5,7 +5,6 @@
 #include "client.h"
 
 typedef std::vector<seal::Plaintext> Database;
-typedef std::vector<uint64_t> Entry;
 
 class PirServer {
   public:
@@ -13,12 +12,11 @@ class PirServer {
     /* Replaces the database with random data */
     void gen_data();
     void set_database(std::vector<Entry> new_db);
-    Database get_database();
     std::vector<seal::Ciphertext> make_query(uint32_t client_id, PirQuery query);
-    void register_client(PirClient* client);
+    void set_client_keys(uint32_t client_id, seal::GaloisKeys client_key);
+    void set_client_decryptor(uint32_t client_id, seal::Decryptor* client_decryptor);
 
   private:
-    seal::EncryptionParameters params_;
     uint64_t DBSize_;
     seal::SEALContext context_;
     seal::Evaluator evaluator_;
@@ -26,10 +24,12 @@ class PirServer {
     std::map<uint32_t, seal::GaloisKeys> client_keys_;
     std::map<uint32_t, seal::Decryptor*> client_decryptors_;
     Database db_;
-    uint32_t next_client_id = 0;
-
+    PirParams pir_params_;
 
     std::vector<seal::Ciphertext> expand_first_query_dim(uint32_t client_id, seal::Ciphertext ciphertext);
     std::vector<seal::Ciphertext> evaluate_first_dim(std::vector<seal::Ciphertext> & selection_vector);
-    void set_client_keys(uint32_t client_id, seal::GaloisKeys client_key);
+    std::vector<uint64_t> entries_to_coeffs(std::vector<Entry> entries, size_t offset, size_t num_entries_to_convert);
+    void set_database_from_bytes(const std::vector<uint8_t> & data);
+    void preprocess_ntt();
+
 };
