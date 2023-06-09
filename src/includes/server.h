@@ -28,6 +28,7 @@ class PirServer {
 
     std::vector<seal::Ciphertext> expand_first_query_dim(uint32_t client_id, seal::Ciphertext ciphertext);
     std::vector<seal::Ciphertext> evaluate_first_dim(std::vector<seal::Ciphertext> & selection_vector);
+    std::vector<seal::Ciphertext> evaluate_first_dim_delayed_mod(std::vector<seal::Ciphertext> & selection_vector);
     std::vector<uint64_t> entries_to_coeffs(std::vector<Entry> entries, size_t offset, size_t num_entries_to_convert);
     void set_database_from_bytes(const std::vector<uint8_t> & data);
     void preprocess_ntt();

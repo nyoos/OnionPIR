@@ -100,7 +100,6 @@ Entry PirClient::get_entry_from_plaintext(size_t entry_index, seal::Plaintext pl
 
   // Offset in the coefficient by byte
   size_t coeff_offset = start_position_in_plaintext % num_bytes_per_coeff;
-  std::cout << coeff_offset << std::endl;
 
   size_t entry_size = pir_params_.get_entry_size();
   Entry result(entry_size);

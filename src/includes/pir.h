@@ -32,6 +32,8 @@ public:
                 dims_.push_back(2);
             }
             seal_params_.set_poly_modulus_degree(DatabaseConstants::PolyDegree);
+            // seal_params_.set_coeff_modulus(CoeffModulus::Create(DatabaseConstants::PolyDegree, {55, 50, 50, 60}));
+            // seal_params_.set_plain_modulus(PlainModulus::Batching(DatabaseConstants::PolyDegree, DatabaseConstants::PlaintextModBits));
             seal_params_.set_coeff_modulus({DatabaseConstants::CiphertextMod1, DatabaseConstants::CiphertextMod2});
             seal_params_.set_plain_modulus(DatabaseConstants::PlaintextMod);
         } 
