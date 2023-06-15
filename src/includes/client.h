@@ -8,15 +8,23 @@ public:
     PirClient(const PirParams &pirparms);
     ~PirClient();
 
-    PirQuery generate_query(std::uint64_t index);
+    /*!
+        Generates an OnionPIR query corresponding to the plaintext that encodes the given entry index.
+    */
+    PirQuery generate_query(std::uint64_t entry_index);
 
     seal::GaloisKeys create_galois_keys();
-    // void decrypt_results(std::vector<seal::Ciphertext> reply);
 
     std::vector<seal::Plaintext> decrypt_result(std::vector<seal::Ciphertext> reply);
     uint32_t client_id;
     seal::Decryptor* get_decryptor();
+    /*!
+        Retrieves an entry from the plaintext containing the entry.
+    */
     Entry get_entry_from_plaintext(size_t entry_index, seal::Plaintext plaintext);
+    /*!
+        Gets the corresponding plaintext index in a database for a given entry index
+    */
     size_t get_database_index(size_t entry_index);
 
 private:

@@ -31,16 +31,13 @@ void PirServer::gen_data() {
 std::vector<seal::Ciphertext> PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> & selection_vector) {
   int size_of_other_dims = DBSize_ / dims_[0];
   std::vector<seal::Ciphertext> result;
-  // for (int j = 0; j < size_of_other_dims; j++){ 
-  //   seal::Ciphertext cipher_result;
-  //   result.push_back(cipher_result);
-  // }
 
   for (int i = 0; i < size_of_other_dims; i++) {
     seal::Ciphertext cipher_result;
     evaluator_.multiply_plain(selection_vector[0], db_[i], cipher_result);
     result.push_back(cipher_result);
   }
+
 
   for (int i = 1; i < selection_vector.size(); i++) {
     for (int j = 0; j < size_of_other_dims; j++){ 
@@ -50,26 +47,30 @@ std::vector<seal::Ciphertext> PirServer::evaluate_first_dim(std::vector<seal::Ci
     }
   }
 
-  for (auto & ciphertext : result){
-    evaluator_.transform_from_ntt_inplace(ciphertext);
-  }
   return result;
 }
 
 // Computes a dot product between the selection vector and the database for the first dimension with a delayed modulus optimization. Selection vector should be transformed to ntt.
 std::vector<seal::Ciphertext> PirServer::evaluate_first_dim_delayed_mod(std::vector<seal::Ciphertext> & selection_vector) {
+
+  for (auto & ciphertext : selection_vector) {
+    evaluator_.transform_to_ntt_inplace(ciphertext);
+  }
+
   int size_of_other_dims = DBSize_ / dims_[0];
   std::vector<seal::Ciphertext> result;
 
-  auto &coeff_modulus = pir_params_.get_seal_params().coeff_modulus();
+  auto coeff_modulus = pir_params_.get_seal_params().coeff_modulus();
+
   size_t coeff_count = pir_params_.get_seal_params().poly_modulus_degree();
   size_t coeff_mod_count = coeff_modulus.size();
   size_t encrypted_ntt_size = selection_vector[0].size();
-
+  // std::cout << encrypted_ntt_size << std::endl;
   seal::Ciphertext ct_acc;
   for (int col_id = 0; col_id < size_of_other_dims; ++col_id){
-    std::vector<std::vector<uint128_t>> buffer(encrypted_ntt_size, std::vector<uint128_t>(coeff_count * coeff_mod_count, 1));
+    std::vector<std::vector<uint128_t>> buffer(encrypted_ntt_size, std::vector<uint128_t>(coeff_count * coeff_mod_count, 0));
     for (int i = 0; i < dims_[0]; i++){
+      // std::cout << "i: " << i << std::endl;
       for(size_t poly_id = 0; poly_id < encrypted_ntt_size; poly_id++){
         utils::multiply_poly_acum(selection_vector[i].data(poly_id), db_[col_id + i * size_of_other_dims].data(), coeff_count * coeff_mod_count, buffer[poly_id].data());
       }
@@ -94,7 +95,6 @@ std::vector<seal::Ciphertext> PirServer::evaluate_first_dim_delayed_mod(std::vec
   return result;
 }
 
-// Expands the first query ciphertext into a selection vector of ntt-processed ciphertexts where the ith ciphertext encodes the ith bit of the first query ciphertext.
 std::vector<seal::Ciphertext> PirServer::expand_first_query_dim(uint32_t client_id, seal::Ciphertext ciphertext) {
   seal::EncryptionParameters params = pir_params_.get_seal_params();
   std::vector<Ciphertext> expanded_query;
@@ -116,16 +116,13 @@ std::vector<seal::Ciphertext> PirServer::expand_first_query_dim(uint32_t client_
                                       poly_degree/expansion_const + 1,
                                       client_keys_[client_id]);
       Ciphertext cipher1;
-      shift_polynomial(params, cipher0, cipher1, -expansion_const);
-      shift_polynomial(params, cipher_vec[b], cipher_vec[b + expansion_const], -expansion_const);
+      utils::shift_polynomial(params, cipher0, cipher1, -expansion_const);
+      utils::shift_polynomial(params, cipher_vec[b], cipher_vec[b + expansion_const], -expansion_const);
       evaluator_.add_inplace(cipher_vec[b], cipher0);
       evaluator_.sub_inplace(cipher_vec[b + expansion_const], cipher1);
     }
   }
 
-  for (auto & ciphertext : cipher_vec) {
-    evaluator_.transform_to_ntt_inplace(ciphertext);
-  }
   return cipher_vec;
 }
 
@@ -141,19 +138,27 @@ void PirServer::set_client_keys(uint32_t client_id, seal::GaloisKeys client_key)
 std::vector<seal::Ciphertext> PirServer::make_query(uint32_t client_id, PirQuery query) {
   std::vector<seal::Ciphertext> first_dim_selection_vector = expand_first_query_dim(client_id, query[0]);
 
-  // for (auto & ct : first_dim_selection_vector) {
-  //   Plaintext pt;
-  //   client_decryptors_[client_id]->decrypt(ct, pt);
-  //   std::cout << pt.to_string() << ", " ;
-  // }
   std::vector<seal::Ciphertext> result =  evaluate_first_dim_delayed_mod(first_dim_selection_vector);
   // std::vector<seal::Ciphertext> result =  evaluate_first_dim(first_dim_selection_vector);
 
 
   return result;
 }
+std::vector<seal::Ciphertext> PirServer::make_query_delayed_mod(uint32_t client_id, PirQuery query) {
+  std::vector<seal::Ciphertext> first_dim_selection_vector = expand_first_query_dim(client_id, query[0]);
 
-// Sets database by turning data into a stream of bits then encoding the bits into the plaintext. Any left over space in the DB is padded by 1s.
+  std::vector<seal::Ciphertext> result =  evaluate_first_dim_delayed_mod(first_dim_selection_vector);
+
+  return result;
+}
+std::vector<seal::Ciphertext> PirServer::make_query_regular_mod(uint32_t client_id, PirQuery query) {
+  std::vector<seal::Ciphertext> first_dim_selection_vector = expand_first_query_dim(client_id, query[0]);
+
+  std::vector<seal::Ciphertext> result =  evaluate_first_dim(first_dim_selection_vector);
+
+  return result;
+}
+
 void PirServer::set_database(std::vector<Entry> new_db) {
   db_ = Database();
 
@@ -176,32 +181,36 @@ void PirServer::set_database(std::vector<Entry> new_db) {
 }
 
 
-// Encodes the stream of bytes into plaintext coefficients by simply packing as many bytes into each coefficient as possible. However each plaintext always ends aligned to the end of an entry (no entries are split across multiple plaintexts).
 void PirServer::set_database_from_bytes(const std::vector<uint8_t> & data) {
   // Get necessary parameters
-  size_t bytes_per_coeff = pir_params_.get_num_bytes_per_coeff();
-  size_t num_bytes_per_plaintext = pir_params_.get_num_bytes_per_plaintext();
+  size_t bits_per_coeff = pir_params_.get_num_bits_per_coeff();
+  size_t num_bits_per_plaintext = pir_params_.get_num_bits_per_plaintext();
+  size_t num_coeffs = pir_params_.get_seal_params().poly_modulus_degree();
 
   db_ = Database();
 
   auto data_iterator = data.begin();
+  uint128_t data_buffer = 0;
+  uint8_t data_offset = 0;
+  uint128_t coeff_mask = (1 << (bits_per_coeff + 1)) - 1;
+
   while (data_iterator != data.end()) {
     seal::Plaintext plaintext(pir_params_.get_seal_params().poly_modulus_degree());
-    for (int i = 0; i < num_bytes_per_plaintext && data_iterator != data.end(); i += bytes_per_coeff){ 
-      std::string bit_str;
-      for (int j = 0 ; j < bytes_per_coeff && data_iterator != data.end(); ++j){
-        bit_str = std::bitset<8>(*(data_iterator++)).to_string() + bit_str;
+    for (int i = 0; i < num_coeffs && data_iterator != data.end(); ++i){ 
+      for (int j = 0 ; j < bits_per_coeff && data_iterator != data.end(); j += 8){
+        data_buffer += *(data_iterator++) << data_offset;
+        data_offset += 8;
       }
-      plaintext[i / bytes_per_coeff] = std::bitset<64>(bit_str).to_ullong();
+      plaintext[i] = data_buffer & coeff_mask;
+      data_buffer >>= bits_per_coeff;
+      data_offset -= bits_per_coeff;
     }
     db_.push_back(plaintext);
   }
 
-  // Pad database until DBSize_
+  // Pad database with plaintext of 1s until DBSize_
   for (size_t i = db_.size(); i < DBSize_; i++){
-    db_.push_back(seal::Plaintext(pir_params_.get_seal_params().poly_modulus_degree()));
-    // Pad each plaintext with a 1
-    db_[i][0] = 1;
+    db_.push_back(seal::Plaintext("1"));
   }
 
   // Process database

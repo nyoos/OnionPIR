@@ -42,6 +42,7 @@ PirQuery PirClient::generate_query(std::uint64_t entry_index) {
   std::vector<seal::Plaintext> plain_query;
   plain_query.push_back(seal::Plaintext(poly_degree));
 
+  // We set the corresponding coefficient to the inverse so the value of the expanded ciphertext will be 1
   uint64_t inverse = 0;
   seal::util::try_invert_uint_mod(bits_per_ciphertext, params_.plain_modulus(), inverse);
  
@@ -84,33 +85,47 @@ std::vector<seal::Plaintext> PirClient::decrypt_result(std::vector<seal::Ciphert
   return result;
 }
 
-// Calculates the index of the database plaintext that contains the desired entry
 size_t PirClient::get_database_index(size_t entry_index) {
-  return entry_index / pir_params_.num_entries_per_plaintext();
+  return entry_index / pir_params_.get_num_entries_per_plaintext();
 }
 
-// Retrieves the desired bytes from the plaintext and converts it into an Entry
 Entry PirClient::get_entry_from_plaintext(size_t entry_index, seal::Plaintext plaintext) {
-  // Offset in the plaintext by bytes
-  size_t start_position_in_plaintext = (entry_index % pir_params_.num_entries_per_plaintext()) * pir_params_.get_entry_size();
+  // Offset in the plaintext in bits
+  size_t start_position_in_plaintext = (entry_index % pir_params_.get_num_entries_per_plaintext()) * pir_params_.get_entry_size() * 8;
   
   // Offset in the plaintext by coefficient
-  size_t num_bytes_per_coeff = pir_params_.get_num_bytes_per_coeff();
-  size_t coeff_index = start_position_in_plaintext / pir_params_.get_num_bytes_per_coeff();
+  size_t num_bits_per_coeff = pir_params_.get_num_bits_per_coeff();
+  size_t coeff_index = start_position_in_plaintext / num_bits_per_coeff;
 
-  // Offset in the coefficient by byte
-  size_t coeff_offset = start_position_in_plaintext % num_bytes_per_coeff;
+  // Offset in the coefficient by bits 
+  size_t coeff_offset = start_position_in_plaintext % num_bits_per_coeff;
 
-  size_t entry_size = pir_params_.get_entry_size();
-  Entry result(entry_size);
+  // Size of entry in bits
+  size_t entry_size = pir_params_.get_entry_size() * 8;
+  Entry result;
+  // Entry value is a buffer to handle cases where the number of bits stored by the coefficients is not divisible by 8.
+  uint8_t entry_value = 0;
   for (int i = 0; i < entry_size;) {
-    while (coeff_offset < num_bytes_per_coeff) {
-      uint64_t bitmask = 255 << coeff_offset*8;
-      uint64_t kk = bitmask & plaintext[coeff_index];
-      uint8_t value = (bitmask & plaintext[coeff_index]) >> (coeff_offset*8);
-      result[i] = value;
-      ++i;
-      ++coeff_offset;
+    while (coeff_offset < num_bits_per_coeff) {
+      if (entry_value != 0) {
+        // Num empty btis in entry_value
+        uint8_t bits_needed = i % 8;
+        uint8_t bitmask = (1 << (bits_needed + 1)) - 1;
+        entry_value += (plaintext[coeff_index] & bitmask) << (8 - bits_needed);
+        result.push_back(entry_value);
+        entry_value = 0;
+        i += bits_needed;
+        coeff_offset += bits_needed;
+      }
+      else if (num_bits_per_coeff - coeff_offset >= 8){
+        result.push_back((plaintext[coeff_index] >> coeff_offset) & 255);
+        i += 8;
+        coeff_offset += 8;
+      } else {
+        entry_value += (plaintext[coeff_index] >> coeff_offset);
+        i += (num_bits_per_coeff - coeff_offset);
+        coeff_offset = num_bits_per_coeff;
+      }
     }
     coeff_offset = 0;
     ++coeff_index;

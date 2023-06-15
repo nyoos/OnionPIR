@@ -14,6 +14,13 @@ typedef std::vector<Ciphertext> PirQuery;
 
 class PirParams {
 public:
+    /*!
+        PirParams constructor.
+        @param DBSize - Number of plaintexts in database
+        @param ndim - Number of database dimensions
+        @param num_entries - Number of entries in database
+        @param entry_size - Size of each entry in bytes
+        */
     PirParams(uint64_t DBSize, uint64_t ndim, uint64_t num_entries, uint64_t entry_size): 
         DBSize_(DBSize),
         seal_params_(seal::EncryptionParameters(seal::scheme_type::bfv)),
@@ -41,9 +48,11 @@ public:
     void print_values();
     uint64_t get_DBSize() const;
     std::vector<uint64_t> get_dims() const;
-    size_t num_entries_per_plaintext() const;
-    size_t get_num_bytes_per_coeff() const;
-    size_t get_num_bytes_per_plaintext() const;
+    // Calculates the number of entries that each plaintext can contain, aligning the end of an entry to the end of a plaintext.
+    size_t get_num_entries_per_plaintext() const;
+    size_t get_num_bits_per_coeff() const;
+    // Calculates the number of bytes of data each plaintext contains, after aligning the end of an entry to the end of a plaintext.
+    size_t get_num_bits_per_plaintext() const;
     size_t get_num_entries() const;
     size_t get_entry_size() const;
 
@@ -56,6 +65,4 @@ private:
 };
 
 
-void negacyclic_shift_poly_coeffmod(ConstCoeffIter poly, size_t coeff_count, size_t shift, const Modulus &modulus, CoeffIter result);
-void shift_polynomial(EncryptionParameters & params, Ciphertext & encrypted, Ciphertext & destination, size_t index);
 void print_entry(Entry entry);

@@ -3,10 +3,20 @@
 #include "seal/seal.h"
 
 namespace utils{
+    /*!
+        Helper function for multiply_poly_acum. Multiplies two operands together and stores the result in product_acum.
+    */
     inline void multiply_acum(uint64_t op1, uint64_t op2, __uint128_t& product_acum) {
         product_acum = product_acum + static_cast<__uint128_t>(op1) * static_cast<__uint128_t>(op2); 
     }
 
+    /*!
+        Multiplies two polynomials in NTT form together and adds the result to a third polynomial in NTT form. 
+        @param ct_ptr - Pointer to the start of the data of the first polynomial
+        @param pt_ptr - Pointer to the start of the data of the second polynomial
+        @param size - Number of polynomial coefficients
+        @param result - Pointer to the start of the data of the result polynomial
+    */
     inline void multiply_poly_acum(const uint64_t *ct_ptr, const uint64_t *pt_ptr, size_t size, uint128_t *result) {
         for (int cc = 0; cc < size; cc += 32) {
             multiply_acum(ct_ptr[cc], pt_ptr[cc], result[cc]);
@@ -41,7 +51,8 @@ namespace utils{
             multiply_acum(ct_ptr[cc + 29], pt_ptr[cc + 29], result[cc + 29]);
             multiply_acum(ct_ptr[cc + 30], pt_ptr[cc + 30], result[cc + 30]);
             multiply_acum(ct_ptr[cc + 31], pt_ptr[cc + 31], result[cc + 31]);
-            
         }
     }
+    void negacyclic_shift_poly_coeffmod(seal::util::ConstCoeffIter poly, size_t coeff_count, size_t shift, const seal::Modulus &modulus, seal::util::CoeffIter result);
+    void shift_polynomial(seal::EncryptionParameters & params, seal::Ciphertext & encrypted, seal::Ciphertext & destination, size_t index);
 }
