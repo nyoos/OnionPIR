@@ -4,7 +4,8 @@
 #include <chrono>
 
 int main() {
-  PirParams pir_params(2048, 2, 1000, 3);
+  // PirParams pir_params(1048576, 8, 1000000, 3);
+  PirParams pir_params(2048, 2, 1000, 2);
   const int client_id = 0;
   pir_params.print_values();
   PirServer server(pir_params);
@@ -21,7 +22,7 @@ int main() {
   for (auto & entry : data) {
     entry.push_back(255);
     entry.push_back(173);
-    entry.push_back(183);
+    // entry.push_back(183);
   }
   server.set_database(data);
   std::cout << "DB set" << std::endl;

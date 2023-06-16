@@ -47,22 +47,22 @@ std::vector<seal::Ciphertext> PirServer::evaluate_first_dim(std::vector<seal::Ci
     }
   }
 
+  for (auto & ct : result){
+    evaluator_.transform_from_ntt_inplace(ct);
+  }
+
   return result;
 }
 
 // Computes a dot product between the selection vector and the database for the first dimension with a delayed modulus optimization. Selection vector should be transformed to ntt.
 std::vector<seal::Ciphertext> PirServer::evaluate_first_dim_delayed_mod(std::vector<seal::Ciphertext> & selection_vector) {
 
-  for (auto & ciphertext : selection_vector) {
-    evaluator_.transform_to_ntt_inplace(ciphertext);
-  }
-
   int size_of_other_dims = DBSize_ / dims_[0];
   std::vector<seal::Ciphertext> result;
+  auto seal_params =  context_.get_context_data(selection_vector[0].parms_id())->parms();
+  auto coeff_modulus = seal_params.coeff_modulus();
 
-  auto coeff_modulus = pir_params_.get_seal_params().coeff_modulus();
-
-  size_t coeff_count = pir_params_.get_seal_params().poly_modulus_degree();
+  size_t coeff_count = seal_params.poly_modulus_degree();
   size_t coeff_mod_count = coeff_modulus.size();
   size_t encrypted_ntt_size = selection_vector[0].size();
   // std::cout << encrypted_ntt_size << std::endl;
@@ -121,6 +121,10 @@ std::vector<seal::Ciphertext> PirServer::expand_first_query_dim(uint32_t client_
       evaluator_.add_inplace(cipher_vec[b], cipher0);
       evaluator_.sub_inplace(cipher_vec[b + expansion_const], cipher1);
     }
+  }
+
+  for (auto & ciphertext : cipher_vec) {
+    evaluator_.transform_to_ntt_inplace(ciphertext);
   }
 
   return cipher_vec;
