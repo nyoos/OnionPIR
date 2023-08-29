@@ -3,7 +3,7 @@
 #include <vector>
 
 // A GSWCiphertext is a flattened 2lx2 matrix of polynomials 
-typedef std::vector<std::vector<uint64_t>> GSWCiphertext;
+typedef std::vector<std::vector<uint128_t>> GSWCiphertext;
 
 /*!
   Performs a gadget decomposition of a size 2 BFV ciphertext into 2 sets of rows of l polynomials (the 2 sets are concatenated into a single vector of vectors). Each polynomial coefficient encodes the value congruent to the original ciphertext coefficient modulus the value of base^(l-row).
@@ -27,3 +27,10 @@ void decomp_rlwe128(seal::Ciphertext ct, const uint64_t l, std::shared_ptr<seal:
 */
 void external_product(GSWCiphertext &gsw_enc, std::vector<uint64_t *> &decomposed_bfv, std::shared_ptr<seal::SEALContext> &context, int l, size_t ct_poly_size, seal::Ciphertext &res_ct);
 
+/*!
+  Generates a GSW gadget matrix with the specified parameters.
+  @param context_data - SEAL context data
+  @param l - number of GSW rows
+  @param base_log2 - value of log2(GSW base) (base must be a power of 2)
+*/
+GSWCiphertext create_GSW_gadget(seal::SEALContext context, int base_log2, int l);

@@ -31,7 +31,8 @@ seal::Decryptor* PirClient::get_decryptor() {
 PirQuery PirClient::generate_query(std::uint64_t entry_index) {
 
   // Get the corresponding index of the plaintext in the database
-  uint64_t database_index = get_database_index(entry_index);
+  uint64_t plaintext_index = get_database_plain_index(entry_index);
+  std::vector<uint64_t> query_indexes = get_query_indexes(plaintext_index);
   uint64_t poly_degree = params_.poly_modulus_degree();
   
   // The number of bits is equal to the size of the first dimension
@@ -42,11 +43,12 @@ PirQuery PirClient::generate_query(std::uint64_t entry_index) {
   std::vector<seal::Plaintext> plain_query;
   plain_query.push_back(seal::Plaintext(poly_degree));
 
+  // Algorithm 1 from the OnionPIR Paper
   // We set the corresponding coefficient to the inverse so the value of the expanded ciphertext will be 1
   uint64_t inverse = 0;
   seal::util::try_invert_uint_mod(bits_per_ciphertext, params_.plain_modulus(), inverse);
  
-  plain_query[0][database_index / size_of_other_dims] = inverse;
+  plain_query[0][plaintext_index / size_of_other_dims] = inverse;
   
   PirQuery query;
   for (int i = 0; i < plain_query.size(); i++) {
@@ -85,8 +87,21 @@ std::vector<seal::Plaintext> PirClient::decrypt_result(std::vector<seal::Ciphert
   return result;
 }
 
-size_t PirClient::get_database_index(size_t entry_index) {
+size_t PirClient::get_database_plain_index(size_t entry_index) {
   return entry_index / pir_params_.get_num_entries_per_plaintext();
+}
+
+std::vector<size_t> PirClient::get_query_indexes(size_t plaintext_index){
+  std::vector<size_t> query_indexes;
+  size_t index = plaintext_index;
+  size_t size_of_remaining_dims = DBSize_;
+  for (auto dim_size : dims_ ){
+    size_of_remaining_dims /= dim_size;
+    query_indexes.push_back(index / dim_size);
+    index = index % size_of_remaining_dims;
+  }
+
+  return query_indexes;
 }
 
 Entry PirClient::get_entry_from_plaintext(size_t entry_index, seal::Plaintext plaintext) {

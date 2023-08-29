@@ -22,10 +22,6 @@ public:
         Retrieves an entry from the plaintext containing the entry.
     */
     Entry get_entry_from_plaintext(size_t entry_index, seal::Plaintext plaintext);
-    /*!
-        Gets the corresponding plaintext index in a database for a given entry index
-    */
-    size_t get_database_index(size_t entry_index);
 
 private:
     seal::EncryptionParameters params_;
@@ -40,5 +36,13 @@ private:
     seal::SEALContext* context_;
     seal::PublicKey public_key_;
     const seal::SecretKey* secret_key_;
-    
+    /*!
+        Gets the corresponding plaintext index in a database for a given entry index
+    */
+    size_t get_database_plain_index(size_t entry_index);
+
+    /*!
+        Gets the query indexes for a given plaintext
+    */
+    std::vector<size_t> get_query_indexes(size_t plaintext_index);
 };
